@@ -110,11 +110,26 @@ export default function AdminDrawsPage() {
   }
 
   const handlePublish = async (drawId: string) => {
-    const { error } = await supabase.from('draws').update({ status: 'published' }).eq('id', drawId)
-    if (error) { toast.error('Failed to publish'); return }
+  const { error } = await supabase.from('draws').update({ status: 'published' }).eq('id', drawId)
+  if (error) { toast.error('Failed to publish'); return }
+
+  // Send emails to all subscribers
+  toast.loading('Sending notifications to all subscribers...')
+  try {
+    const res = await fetch('/api/email/draw-published', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drawId })
+    })
+    const data = await res.json()
+    toast.dismiss()
+    toast.success(`Draw published! ${data.emailsSent} subscribers notified.`)
+  } catch (error) {
+    toast.dismiss()
     toast.success('Draw published!')
-    loadData()
   }
+  loadData()
+}
 
   const prizePool = subscriberCount * 9.99
   const jackpot = (prizePool * 0.4) + rolloverAmount

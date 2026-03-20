@@ -32,8 +32,17 @@ export default function SignupPage() {
     if (form.charity_id && data.user) {
       await supabase.from('users').update({ charity_id: form.charity_id }).eq('id', data.user.id)
     }
-    toast.success('Account created! Choose your plan.')
-    router.push('/pricing')
+    // Send welcome email
+if (data.user) {
+  fetch('/api/email/welcome', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: data.user.id })
+  })
+}
+
+toast.success('Account created! Choose your plan.')
+router.push('/pricing')
   }
 
   const inputStyle = {
