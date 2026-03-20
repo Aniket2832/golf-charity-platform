@@ -18,11 +18,12 @@ export default function HomePage() {
             <span style={{color: '#22c55e', fontWeight: 'bold', fontSize: '20px'}}>Charity</span>
           </div>
           <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
-            <Link href="/login" style={{color: '#9ca3af', fontSize: '14px'}}>Sign In</Link>
-            <Link href="/signup" style={{backgroundColor: '#22c55e', color: 'black', fontWeight: '600', padding: '8px 16px', borderRadius: '12px', fontSize: '14px'}}>
-              Get Started
-            </Link>
-          </div>
+  <Link href="/charities" style={{color: '#9ca3af', fontSize: '14px'}}>Charities</Link>
+  <Link href="/login" style={{color: '#9ca3af', fontSize: '14px'}}>Sign In</Link>
+  <Link href="/signup" style={{backgroundColor: '#22c55e', color: 'black', fontWeight: '600', padding: '8px 16px', borderRadius: '12px', fontSize: '14px'}}>
+    Get Started
+  </Link>
+</div>
         </div>
       </nav>
 
