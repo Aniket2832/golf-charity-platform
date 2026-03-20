@@ -11,17 +11,20 @@ export default function AdminDrawsPage() {
   const [drawType, setDrawType] = useState<'random' | 'weighted'>('random')
   const [simulation, setSimulation] = useState<number[] | null>(null)
   const [subscriberCount, setSubscriberCount] = useState(0)
+  const [rolloverAmount, setRolloverAmount] = useState(0)
   const supabase = createClient()
 
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    const [drawsData, subsData] = await Promise.all([
+    const [drawsData, subsData, rolloverData] = await Promise.all([
       supabase.from('draws').select('*, prize_pool_config(*)').order('created_at', { ascending: false }),
-      supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'active')
+      supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'active'),
+      supabase.rpc('get_jackpot_rollover')
     ])
     if (drawsData.data) setDraws(drawsData.data)
     setSubscriberCount(subsData.count || 0)
+    setRolloverAmount(rolloverData.data || 0)
     setLoading(false)
   }
 
@@ -59,17 +62,23 @@ export default function AdminDrawsPage() {
     const month = new Date().toISOString().slice(0, 7)
     const numbers = await generateNumbers(drawType)
 
+    const totalPool = subscriberCount * 9.99
+    const tier5 = (totalPool * 0.4) + rolloverAmount
+    const tier4 = totalPool * 0.35
+    const tier3 = totalPool * 0.25
+
     const { data: draw, error: drawError } = await supabase
       .from('draws')
-      .insert({ month, draw_type: drawType, numbers, status: 'draft' })
+      .insert({
+        month,
+        draw_type: drawType,
+        numbers,
+        status: 'draft',
+        rolled_jackpot_amt: rolloverAmount
+      })
       .select().single()
 
     if (drawError) { toast.error('Failed to create draw'); setRunning(false); return }
-
-    const totalPool = subscriberCount * 9.99
-    const tier5 = totalPool * 0.4
-    const tier4 = totalPool * 0.35
-    const tier3 = totalPool * 0.25
 
     await supabase.from('prize_pool_config').insert({
       draw_id: draw.id,
@@ -108,6 +117,7 @@ export default function AdminDrawsPage() {
   }
 
   const prizePool = subscriberCount * 9.99
+  const jackpot = (prizePool * 0.4) + rolloverAmount
 
   if (loading) return (
     <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px'}}>
@@ -128,17 +138,43 @@ export default function AdminDrawsPage() {
 
         {/* Stats */}
         <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px'}}>
-          {[
-            { label: 'Active Subscribers', value: subscriberCount, color: 'white' },
-            { label: 'Total Prize Pool', value: `£${prizePool.toFixed(2)}`, color: '#22c55e' },
-            { label: 'Jackpot (5 Match)', value: `£${(prizePool * 0.4).toFixed(2)}`, color: '#eab308' },
-          ].map((s, i) => (
-            <div key={i} style={{backgroundColor: '#1f2937', borderRadius: '12px', padding: '16px', textAlign: 'center'}}>
-              <p style={{fontSize: '24px', fontWeight: 'bold', color: s.color}}>{s.value}</p>
-              <p style={{color: '#9ca3af', fontSize: '13px', marginTop: '4px'}}>{s.label}</p>
-            </div>
-          ))}
+          <div style={{backgroundColor: '#1f2937', borderRadius: '12px', padding: '16px', textAlign: 'center'}}>
+            <p style={{fontSize: '24px', fontWeight: 'bold', color: 'white'}}>{subscriberCount}</p>
+            <p style={{color: '#9ca3af', fontSize: '13px', marginTop: '4px'}}>Active Subscribers</p>
+          </div>
+          <div style={{backgroundColor: '#1f2937', borderRadius: '12px', padding: '16px', textAlign: 'center'}}>
+            <p style={{fontSize: '24px', fontWeight: 'bold', color: '#22c55e'}}>£{prizePool.toFixed(2)}</p>
+            <p style={{color: '#9ca3af', fontSize: '13px', marginTop: '4px'}}>Total Prize Pool</p>
+          </div>
+          <div style={{backgroundColor: '#1f2937', borderRadius: '12px', padding: '16px', textAlign: 'center'}}>
+            <p style={{fontSize: '24px', fontWeight: 'bold', color: '#eab308'}}>£{jackpot.toFixed(2)}</p>
+            <p style={{color: '#9ca3af', fontSize: '13px', marginTop: '4px'}}>Jackpot (5 Match)</p>
+            {rolloverAmount > 0 && (
+              <p style={{color: '#eab308', fontSize: '11px', marginTop: '2px'}}>
+                Includes £{rolloverAmount.toFixed(2)} rollover!
+              </p>
+            )}
+          </div>
         </div>
+
+        {/* Rollover banner */}
+        {rolloverAmount > 0 && (
+          <div style={{
+            backgroundColor: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)',
+            borderRadius: '12px', padding: '12px 16px', marginBottom: '16px',
+            display: 'flex', alignItems: 'center', gap: '10px'
+          }}>
+            <span style={{fontSize: '20px'}}>🎰</span>
+            <div>
+              <p style={{color: '#eab308', fontWeight: '600', fontSize: '14px'}}>
+                Jackpot Rollover Active!
+              </p>
+              <p style={{color: '#9ca3af', fontSize: '13px'}}>
+                £{rolloverAmount.toFixed(2)} carried forward from last month — jackpot is now £{jackpot.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Draw type */}
         <div style={{marginBottom: '16px'}}>
@@ -202,7 +238,14 @@ export default function AdminDrawsPage() {
           <div key={draw.id} style={{backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '16px', padding: '24px'}}>
             <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px'}}>
               <div>
-                <h3 style={{color: 'white', fontWeight: '600', fontSize: '18px'}}>Draw — {draw.month}</h3>
+                <h3 style={{color: 'white', fontWeight: '600', fontSize: '18px'}}>
+                  Draw — {draw.month}
+                  {draw.rolled_jackpot_amt > 0 && (
+                    <span style={{marginLeft: '8px', backgroundColor: 'rgba(234,179,8,0.2)', color: '#eab308', fontSize: '11px', padding: '3px 8px', borderRadius: '999px', fontWeight: '500'}}>
+                      Rollover included
+                    </span>
+                  )}
+                </h3>
                 <p style={{color: '#9ca3af', fontSize: '13px', textTransform: 'capitalize'}}>{draw.draw_type} draw</p>
               </div>
               <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
@@ -222,7 +265,6 @@ export default function AdminDrawsPage() {
               </div>
             </div>
 
-            {/* Numbers */}
             <div style={{display: 'flex', gap: '8px', marginBottom: '16px'}}>
               {draw.numbers?.map((num: number, i: number) => (
                 <div key={i} style={{
@@ -235,7 +277,6 @@ export default function AdminDrawsPage() {
               ))}
             </div>
 
-            {/* Prize pool */}
             {draw.prize_pool_config && (
               <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px'}}>
                 {[
